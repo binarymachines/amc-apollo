@@ -1,0 +1,27 @@
+globals:
+  project_home: {{ project_home }}
+  lookup_source_module: {{ lookup_module }}
+  service_module: {{ service_module }}
+
+
+sources:
+{% for source in datasources %}
+  {{source.name}}:
+    class: {{source.class}}
+{% endfor %}
+maps:
+{% for map in map_specs %}
+  {{ map.name }}:
+    settings:
+        - name: use_default_identity_transform
+          value: True
+    lookup_source: 
+      {{ map.lookup_source }}
+    fields:
+    {% for field_spec in map %}
+      - {{ field_spec.target_name }}:
+          {% for param in field_spec %}
+          {{ param.name }}: {{ param.value }}
+	  {% endfor %}
+    {% endfor %}
+{% endfor %}

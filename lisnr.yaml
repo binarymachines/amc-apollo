@@ -1,0 +1,77 @@
+# 
+# YAML init file for SNAP microservice framework
+#
+#
+
+globals:
+        bind_host:                   127.0.0.1
+        port:                        5000
+        debug:                       True
+        logfile:                     lisnr.log
+        project_directory:           $LISNR_HOME
+        service_module:              lisnr_services
+        transform_function_module:   lisnr_transforms
+        preprocessor_module:         lisnr_decode
+
+
+service_objects:
+        s3:
+                class: S3ServiceObject
+                init_params:
+                        - name: aws_key_id
+                          value: $MERCURY_AWS_KEY_ID
+
+                        - name: aws_secret_key
+                          value: $MERCURY_AWS_SECRET_KEY
+
+                        - name: local_temp_path
+                          value: /tmp
+
+
+data_shapes:
+        default:
+                fields:
+
+        event:
+                fields:
+                        - name: token
+                          datatype: string
+                          required: True
+                        - name: message
+                          datatype: string
+                          required: True
+        test_shape:
+                fields:
+                        - name: placeholder
+                          datatype: string
+                          required: True
+                        - name: day
+                          datatype: string
+                          required: True
+
+
+transforms:
+        ping:
+            route:              /ping
+            method:             GET
+            input_shape:        default
+            output_mimetype:    application/json
+
+        sns_receive:
+            route:              /sns
+            method:             POST
+            input_shape:        default
+            output_mimetype:    application/json
+
+decoders:
+        text/plain:                decode_text_plain
+        text/plain; charset=UTF-8: decode_text_plain_utf8
+
+
+
+error_handlers:
+        - error:                NoSuchObjectException
+          tx_status_code:       HTTP_NOT_FOUND 
+                
+        - error:                DuplicateIDException
+          tx_status_code:       HTTP_BAD_REQUEST

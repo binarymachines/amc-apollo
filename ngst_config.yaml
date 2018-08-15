@@ -2,11 +2,64 @@
 globals:
   project_home: $APOLLO_HOME
   service_module: apollo_services
+  datastore_module: apollo_datastores
 
-services:
+
+service_objects:
+  kinesis:
+    class: KinesisServiceObject
+    init_params:
+      - name: stream
+        value: mercury_kstream_1
+
+      - name: region
+        value: us-east-1
+
+      - name: aws_key_id
+        value: $AWS_ACCESS_KEY_ID
+
+      - name: aws_secret_key
+        value: $AWS_SECRET_ACCESS_KEY
+
+datastores:
+  kstore: 
+    class: KinesisDatastore
+    init_params:
+
+  filestore:
+    class: FileStore
+    init_params:
+      - name: filename
+        value: foobar.txt
+
+      - name: fail_if_not_found
+        value: True
+        
+  elastic:
+    class: ESDatastore
+    init_params:
+      - name: hostname
+        value: 127.0.0.1
+
+      - name: port
+        value: 9200
+
+      - name: index
+        value: test2
+
+      - name: doctype
+        value: cisco_record
 
 
-targets:
-  couchbase:
-    checkpoint_frequency:
+ingest_targets:
+  test: 
+    datastore: filestore
+    checkpoint_interval: 1
 
+  es_test:
+    datastore: elastic
+    checkpoint_interval: 1
+
+  kinesis-test:
+    datastore: kstore
+    checkpoint_interval: 1

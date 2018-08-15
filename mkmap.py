@@ -21,7 +21,7 @@ from cmd import Cmd
 MAP_CONFIG_TEMPLATE = '''
 globals:
   project_home: {{ project_home }}
-  lookup_source_module: {{ lookup_module }}
+  datasource_module: {{ datasource_module }}
   service_module: {{ service_module }}
 
 
@@ -37,7 +37,7 @@ maps:{% for map in map_specs %}
           value: True
 
     lookup_source: 
-      {{ map.lookup_source }}
+      {{ map.datasource }}
 
     fields:{% for field_spec in map.fields %}
       - {{ field_spec.target_name }}:
@@ -76,9 +76,9 @@ class FieldSpec(object):
 
 
 class MapSpec(object):
-    def __init__(self, name, lookup_datasource_name, **kwargs):
+    def __init__(self, name, datasource_name, **kwargs):
         self.name = name
-        self.lookup_source = lookup_datasource_name
+        self.datasource = datasource_name
         self.fields = []
 
 
@@ -162,7 +162,7 @@ def docopt_cmd(func):
 
 
 GLOBAL_OPTIONS = [{'value': 'project_home', 'label': 'Project Home'},
-                  {'value': 'lookup_source_module', 'label': 'Datasource Module'},
+                  {'value': 'datasource_module', 'label': 'Datasource Module'},
                   {'value': 'service_module', 'label': 'Service Module'}]
 
 UPDATE_OPTIONS = [{'value': 'global_settings', 'label': 'Global settings'},
@@ -181,12 +181,21 @@ class MakeMapCLI(Cmd):
         self.service_objects = kwreader.get_value('service_objects') or []
         self.globals = []
         self.globals.append(ParamSpec(name='project_home', value=''))
-        self.globals.append(ParamSpec(name='lookup_source_module', value=''))
+        self.globals.append(ParamSpec(name='datasource_module', value=''))
         self.globals.append(ParamSpec(name='service_module', value=''))
-
 
         self.initial_datafile = kwargs.get('initial_sourcefile')
         _ = os.system('clear')
+
+
+    @property
+    def project_home(self):
+        return common.load_config_var(self.get_current_project_setting('project_home'))
+
+
+    @property
+    def datasource_module(self):
+        return self.get_current_project_setting('datasource_module')
 
 
     def generate_datasource_options(self):
@@ -197,7 +206,7 @@ class MakeMapCLI(Cmd):
 
 
     def project_home_contains_python_source(self):
-        for root, dir, files in os.walk(os.getcwd()):
+        for root, dir, files in os.walk(self.project_home):
             for f in files:
                 if f.endswith('.py'):
                     return True
@@ -228,22 +237,26 @@ class MakeMapCLI(Cmd):
         '''Configures a new lookup datasource.'''
 
         if not self.project_home_contains_python_source():
-            print('No python source files in project home directory "%s".' % self.globals['project_home'])
+            print('No python source files in project home directory "%s".' % self.project_home)
             return None
 
-        # TODO: parameterize source dir for modules; currently defaulting to working dir.
-        #
-        # generate_module_options() gives us a menu set where the label is the filename
-        # and the value is the importable Python module name (filename minus .py).
-        source_module_name = cli.MenuPrompt('datasource_module',
-                                            generate_module_options_from_directory(os.getcwd())).show()
-        
-        if not source_module_name:
-            return
+        if not self.datasource_module:
+            print('The lookup datasource module has not been configured for this project.')
+            should_set = cli.InputPrompt('Set it now (Y/n)?', 'y').show()
+            if should_set == 'y':
+                self.do_globals({'update': True})
+                if not self.datasource_module:
+                    print('project datasource module not updated.')
+                    return
 
+        source_module_name = self.datasource_module
         print('scanning python module %s for datasources...' % source_module_name)
         
-        class_options = generate_class_options_from_module(source_module_name)            
+        class_options = generate_class_options_from_module(source_module_name)
+        if not len(class_options):
+            print('\nThe python module "%s" contains no eligible types. Please check your code.\n' % source_module_name)
+            return
+  
         class_name = cli.MenuPrompt('Datasource name', class_options).show()            
         if not class_name:
             return
@@ -294,7 +307,29 @@ class MakeMapCLI(Cmd):
              new (map | datasource)
         '''
 
-        #print(common.jsonpretty(cmd_args))
+        if not self.project_home:
+            print('\nTo create a new map or datasource, you must specify a valid project home directory.')
+            should_update_globals = cli.InputPrompt('Run globals command now (Y/n)?', 'y').show()
+            if should_update_globals == 'y':
+                self.do_globals({'update': True})
+                if not self.project_home:
+                    print('project home not updated.')
+                    return
+                print('Returning to "new map" command...')
+            else:
+                return
+
+        if not self.datasource_module:
+            print('\nTo create a new map or datasource, you must specify the Python module containing your lookup-datasource class.')
+            should_update_globals = cli.InputPrompt('Configure now (Y/n)?', 'y').show()
+            if should_update_globals == 'y':
+                self.do_globals({'update': True})
+                if not self.datasource_module:
+                    print('datasource module not set.')
+                    return
+                print('Returning to "new map" command...')
+            else:
+                return
 
         if cmd_args['datasource']:
             source_spec = self.configure_datasource(cmd_args)
@@ -312,8 +347,17 @@ class MakeMapCLI(Cmd):
                         print('Cannot create a CSV map without specifying a separator character.')
                         return
 
-                    print('Will use separator character: ' + repr(separator_char))
+                    print('Will use separator character: ' + separator_char)
                     should_create_source = False
+                    if not self.get_current_project_setting('datasource_module'):
+                        should_create_source = True
+                        print('\nPlease set the lookup source to a valid Python module containing at least one Datasource class.\n')
+                        datasource_module = cli.MenuPrompt('Datasource module', generate_module_options_from_directory(os.getcwd()))
+                        if not datasource_module:
+                            print('Cannot continue without setting the project-wide datasource module.\n')
+                            return
+                        self.update_project_setting('datasource_module', datasource_module)                        
+
                     if not len(self.datasource_specs):
                         create_response = cli.InputPrompt('No datasources registered. Register one now (Y/n)?', 'y').show()
                         if create_response == 'y':
@@ -339,7 +383,7 @@ class MakeMapCLI(Cmd):
                     
                     print('\nSelected datasource "%s" for this datamap.\n' % (selected_source))
 
-                    map_name = cli.InputPrompt('name for this datamap').show()
+                    map_name = cli.InputPrompt('Please enter a name for this datamap').show()
                     if not map_name:
                         return
                     
@@ -392,14 +436,32 @@ class MakeMapCLI(Cmd):
         return 
         
     def get_new_project_setting(self, setting_name, current_value=None):
-        value = cli.InputPrompt(setting_name, current_value).show()
+        value = None
+        if setting_name == 'project_home':
+            value = cli.InputPrompt(setting_name, current_value).show()
+        if setting_name == 'datasource_module':
+            value = cli.MenuPrompt('Datasource module', generate_module_options_from_directory(os.getcwd())).show()
+        if setting_name == 'service_module':
+            value = cli.MenuPrompt('Service module', generate_module_options_from_directory(os.getcwd())).show()
         return value
 
 
     def update_project_setting(self, name, value):
         for index in range(len(self.globals)):
             if self.globals[index].name == name:
-                self.globals[index] = ParamSpec(name=name, value=value)                
+                if name == 'project_home':
+                    try:
+                        if not value:
+                            print('### WARNING: setting project parameter %s to an empty value.' % name)
+                        common.load_config_var(value)
+                        self.globals[index] = ParamSpec(name=name, value=value)
+                    except common.MissingEnvironmentVarException as err:
+                        print('\nThe environment variable %s has not been set.' % value)
+                        return                    
+                else:
+                    self.globals[index] = ParamSpec(name=name, value=value)
+                break               
+
 
     @docopt_cmd
     def do_globals(self, cmd_args):
@@ -419,12 +481,43 @@ class MakeMapCLI(Cmd):
             if new_setting_value:
                 print('\nSetting project parameter "%s" to "%s".\n' % (setting_name, new_setting_value))
                 self.update_project_setting(setting_name, new_setting_value)
-        else:
-            print('_______________________\n')
-            print('Global project settings:\n')
-            print('\n'.join(['%s: %s' % (g.name, g.value) for g in self.globals]))
-            print('_______________________\n')
         
+        print('_______________________\n')
+        print('Global project settings:\n')
+        print('\n'.join(['%s: %s' % (g.name, g.value) for g in self.globals]))
+        print('_______________________\n')
+        
+
+    def do_show(self, cmd_args):
+
+        if not len(self.datasource_specs):
+            print('\nCannot generate a datamap config without one or more lookup datasources.\n')
+            return
+
+        if not len(self.map_specs):
+            print('\nCannot generate a datamap config without one or more maps.\n')
+            return
+
+        
+        global_tbl = named_tuple_array_to_dict(self.globals,
+                                               key_name='name',
+                                               value_name='value')
+        template_data = {
+            'project_home': global_tbl['project_home'],
+            'datasource_module': global_tbl['datasource_module'],
+            'service_module': global_tbl['service_module'],
+            'datasources': self.datasource_specs,
+            'map_specs': self.map_specs
+        }
+
+        j2env = jinja2.Environment()
+        template_mgr = common.JinjaTemplateManager(j2env)
+        map_template = j2env.from_string(MAP_CONFIG_TEMPLATE)
+        output_data = map_template.render(**template_data)
+        print('_______________________\n')
+        print('YAML datamap config:\n')
+        print(output_data)
+        print('_______________________\n')
 
 
     def do_save(self, cmd_args):
@@ -435,13 +528,13 @@ class MakeMapCLI(Cmd):
             print('\nNo datamaps registered. Create one or more datamaps first.\n')
             return
         
-        output_filename = cli.InputPrompt('output filename:').show()
+        output_filename = cli.InputPrompt('output filename').show()
         global_tbl = named_tuple_array_to_dict(self.globals,
                                                key_name='name',
                                                value_name='value')
         template_data = {
             'project_home': global_tbl['project_home'],
-            'lookup_source_module': global_tbl['lookup_source_module'],
+            'datasource_module': global_tbl['datasource_module'],
             'service_module': global_tbl['service_module'],
             'datasources': self.datasource_specs,
             'map_specs': self.map_specs
@@ -492,7 +585,7 @@ def main(args):
 
     template_data = {
         'project_home': '$APOLLO_HOME',
-        'lookup_source_module': 'apollo_datasources',
+        'datasource_module': 'apollo_datasources',
         'service_module': 'apollo_services',
         'datasources': datasource_specs,
         'map_specs': map_specs

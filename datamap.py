@@ -330,7 +330,7 @@ class RecordTransformerBuilder(object):
 
 
     def load_datasource(self, src_name, transform_config, service_object_registry):
-        src_module_name = self._transform_config['globals']['lookup_source_module']
+        src_module_name = self._transform_config['globals']['datasource_module']
         datasource_class_name = self._transform_config['sources'][src_name]['class']
         klass = common.load_class(datasource_class_name, src_module_name)                
         return klass(service_object_registry)

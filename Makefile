@@ -12,7 +12,7 @@ clean:
 
 
 install-deps:
-	pipenv install
+	pipenv --python python3 install
 
 
 regen:

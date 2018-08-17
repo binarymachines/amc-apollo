@@ -237,6 +237,10 @@ class RecordTransformer:
         self.field_map = {}
         self.value_map = FieldValueMap()
         self.output_header = []
+        self.event_handlers = {}
+        self.error_handlers = {}
+        self.count_log = jrnl.CountLog()
+        self.time_log = jrnl.TimeLog()
 
 
     def set_csv_output_header(self, field_names):
@@ -272,6 +276,14 @@ class RecordTransformer:
         self.explicit_datasource_lookup_functions[target_field_name] = function_name
 
 
+    def register_process_event_handler(self, event_tag, function_name):
+        self.event_handlers[event_tag] = function_name
+
+
+    def register_process_error_handler(self, exception_type, function_name):
+        self.error_handlers[exception_type] = function_name
+
+
     def lookup(self, target_field_name, source_record):
         record_value = source_record.get(target_field_name)
         '''
@@ -298,6 +310,7 @@ class RecordTransformer:
         return lookup_function(target_field_name, source_record, self.value_map)
 
 
+    @counter('record transform', self.count_log)
     def transform(self, source_record, **kwargs):
         target_record = {}
         for key, value in kwargs.items():
@@ -311,6 +324,26 @@ class RecordTransformer:
                 target_record[target_field_name] = source_field_resolver.resolve(source_record)
         
         return target_record
+
+
+    @stopwatch('recordset transform', self.time_log)
+    def process(self, record_generator, **kwargs):        
+        success_count = 0
+        
+        for source_record in record_generator:
+            try:
+                target_record = self.transform(source_record, **kwargs)
+                record_count += 1
+                self.handle_processing_event(target_record)
+                success_count += 1
+                yield target_record
+            except Exception as err:
+                self.handle_processing_error(err)
+
+
+    def reset_logs(self):
+        self.time_log = jrnl.TimeLog()
+        self.count_log = jrnl.CountLog()        
 
 
 class RecordTransformerBuilder(object):

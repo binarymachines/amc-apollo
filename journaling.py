@@ -205,6 +205,16 @@ class TimeLog(object):
 
 
     @property
+    def elapsed_time_data(self):
+        result = {}
+        for operation_tag, start_end_tuple in self.op_data.items():
+            end_time = start_end_tuple[1]
+            start_time = start_end_tuple[0]
+            result[operation_tag] = end_time - start_time
+        return result
+
+
+    @property
     def data(self):
         return self.op_data
 

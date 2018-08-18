@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 
 '''Usage:
-            xfile --transform-cfg <configfile> --map <map_name>  <datafile> [--limit <max_records>]
-            xfile --transform-cfg <configfile> --list (sources | maps | globals)          
+            xfile --config <configfile> --map <map_name>  <datafile> [--limit <max_records>]
+            xfile --config <configfile> --list (sources | maps | globals)          
             xfile -i
 
    Options:            
@@ -45,9 +45,6 @@ def build_transformer(map_file_path, mapname):
     return transformer_builder.build()
 
 
-
-
-
 def find_env_vars(arg_dict):
     vars = []
     for value in arg_dict.values():
@@ -82,13 +79,13 @@ def resolve_initfile_args(arg_dict):
 
 def main(args):
     logging.basicConfig(filename='exfile.log', level=logging.DEBUG)
-
+    
     transform_mode = False
     list_mode = False
     interactive_mode = False
     limit = -1
 
-    if args.get('--transform-cfg') == True and not args.get('--list'):
+    if args.get('--config') == True and not args.get('--list'):
         transform_mode = True
     if args.get('--interactive') == True:
         interactive_mode = True
@@ -97,25 +94,33 @@ def main(args):
     if args.get('--list') == True:
         list_mode = True
     
+    if not transform_mode and not interactive_mode:
+        print('unsupported run mode. Exiting.')
+        return
+    
     transform_config_file = args.get('<configfile>')
-    yaml_config = common.read_config_file(transform_config_file)
-
+    yaml_config = common.read_config_file(transform_config_file)    
     if transform_mode:
         delimiter_char = '\t'
         
         transform_map = args.get('<map_name>')
-        datafile = args.get('<datafile>')            
+        datafile = args.get('<datafile>')        
         xformer = build_transformer(transform_config_file, transform_map)
-        
+    
         with open(datafile) as csvfile:
             reader = csv.DictReader(csvfile, delimiter=delimiter_char)
             record_count = 0
             for row in reader:
                 if record_count == limit:
-                    break
+                    break                
                 output_record = xformer.transform(row)
                 print(json.dumps(output_record))
                 record_count += 1
+            '''
+            print(xformer.num_records_transformed)
+            print(xformer.num_records_scanned)
+            print(xformer.processing_time_in_seconds)
+            '''
 
     elif list_mode:
         if args['sources']:
@@ -139,5 +144,5 @@ def main(args):
         
 
 if __name__ == '__main__':
-    args = docopt.docopt(__doc__)
+    args = docopt.docopt(__doc__)    
     main(args)

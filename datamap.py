@@ -7,9 +7,13 @@ from snap import snap, common
 import inspect
 import datetime
 import yaml
+from contextlib import ContextDecorator
+import journaling as jrnl
+from journaling import counter, stopwatch, CountLog, TimeLog
 #from mercury import sqldbx as sqlx
 import logging
 #from mercury import csvutils
+
 
 
 class NoSuchTargetField(Exception):
@@ -229,7 +233,8 @@ class DataTypeTransformer:
         return txfrmd_record
     
 
-class RecordTransformer:
+
+class RecordTransformer(object):
     def __init__(self):
         self.target_record_fields = set()
         self.datasources = {}
@@ -241,6 +246,43 @@ class RecordTransformer:
         self.error_handlers = {}
         self.count_log = jrnl.CountLog()
         self.time_log = jrnl.TimeLog()
+        # this stat will show zero unless the process() method is called.
+        # We do not record time stats for individual calls to the transform() method.
+        # We initialize the elapsed processing time to zero by default
+        current_time = datetime.datetime.now()
+        self.time_log.record_elapsed_time('processing_time', current_time, current_time)
+
+
+    @property
+    def num_records_transformed(self):
+        return self.count_log.data['num_transforms']
+
+
+    @property
+    def num_records_scanned(self):
+        return self.count_log.data['record_count']
+
+
+    @property
+    def processing_time_in_seconds(self):
+        return self.time_log.elapsed_time_data['processing_time'].total_seconds()
+
+
+    class decorators(object):       
+        def processing_counter(func):
+            def wrapper(*args):
+                args[0].count_log.update_count('record_count', 1)                                            
+                result = func(*args)
+                args[0].count_log.update_count('num_transforms', 1)
+                return result
+            return wrapper
+
+        def processing_timer(func):
+            def wrapper(*args):
+                start_time = datetime.datetime.now()
+                func(*args)
+                end_time = datetime.datetime.now()
+                args[0].time_log.record_elapsed_time('processing_time', start_time, end_time)
 
 
     def set_csv_output_header(self, field_names):
@@ -310,7 +352,7 @@ class RecordTransformer:
         return lookup_function(target_field_name, source_record, self.value_map)
 
 
-    @counter('record transform', self.count_log)
+    @decorators.processing_counter
     def transform(self, source_record, **kwargs):
         target_record = {}
         for key, value in kwargs.items():
@@ -326,14 +368,14 @@ class RecordTransformer:
         return target_record
 
 
-    @stopwatch('recordset transform', self.time_log)
+    @decorators.processing_timer
     def process(self, record_generator, **kwargs):        
         success_count = 0
         
         for source_record in record_generator:
             try:
                 target_record = self.transform(source_record, **kwargs)
-                record_count += 1
+                success_count += 1
                 self.handle_processing_event(target_record)
                 success_count += 1
                 yield target_record

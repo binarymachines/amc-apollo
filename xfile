@@ -99,29 +99,25 @@ def main(args):
         return
     
     transform_config_file = args.get('<configfile>')
-    yaml_config = common.read_config_file(transform_config_file)    
+    yaml_config = common.read_config_file(transform_config_file)
+
     if transform_mode:
-        delimiter_char = '\t'
-        
         transform_map = args.get('<map_name>')
         datafile = args.get('<datafile>')        
         xformer = build_transformer(transform_config_file, transform_map)
-    
-        with open(datafile) as csvfile:
-            reader = csv.DictReader(csvfile, delimiter=delimiter_char)
-            record_count = 0
-            for row in reader:
-                if record_count == limit:
-                    break                
-                output_record = xformer.transform(row)
-                print(json.dumps(output_record))
-                record_count += 1
-            '''
-            print(xformer.num_records_transformed)
-            print(xformer.num_records_scanned)
-            print(xformer.processing_time_in_seconds)
-            '''
 
+        rec_source = dmap.RecordSource(dmap.csv_file_record_generator,
+                                       filename=datafile,
+                                       delimiter='\t',
+                                       limit=limit)
+        for input_record in rec_source.records():     
+            output_record = xformer.transform(input_record)
+            print(json.dumps(output_record))
+
+        print('%d records scanned.' % xformer.num_records_scanned, file=sys.stderr)
+        print('%d records transformed successfully.' % xformer.num_records_transformed, file=sys.stderr)            
+        print('finished in %s seconds.' % xformer.processing_time_in_seconds, file=sys.stderr)
+        
     elif list_mode:
         if args['sources']:
             for source in yaml_config['sources']:

@@ -302,13 +302,16 @@ class RecordTransformer(object):
         # this stat will show zero unless the process() method is called.
         # We do not record time stats for individual calls to the transform() method;
         # "processing_time" is the time spent in the process() method, which invokes transform()
-        # once per record in the inbound record stream.
+        # once per inbound record.
         #
         # We initialize the elapsed processing time to zero by default.
         self.time_log = jrnl.TimeLog()
         current_time = datetime.datetime.now()
         self.time_log.record_elapsed_time('processing_time', current_time, current_time)
 
+    # we use an inner class to house our method decorators in order to access the (stateful) log objects which are
+    # part of the enclosing instance. Callers are not required to be aware of this mechanism, but it does mean 
+    # that it is not safe for more than one thread to enter a decorated method at a time.
     class decorators(object):       
         def processing_counter(func):
             def wrapper(*args):

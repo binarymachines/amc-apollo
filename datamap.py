@@ -234,19 +234,23 @@ class DataTypeTransformer:
 '''
 
 
-def file_generator(**kwargs):
-    filename = kwargs.get('filename')
-    with open(filename) as f:
-        while True:
-            line = f.readline()
-            if line:
+def textfile_line_generator(**kwargs):
+    kwreader = common.KeywordArgReader('filename')
+    kwreader.read(**kwargs)
+    filename = kwreader.get_value('filename')
+    with open(filename, 'rt') as f:
+        for raw_line line in f:            
+            line = rawline.rstrip().lstrip()
+            if len(line):
                 yield line
             else:
-                return
+                continue
 
 
-def csv_file_record_generator(**kwargs):
-    filename = kwargs.get('filename')
+def csvfile_record_generator(**kwargs):
+    kwreader = common.KeywordArgReader('filename')
+    kwreader.read(**kwargs)
+    filename = kwreader.get_value('filename')
     delimiter = kwargs.get('delimiter') or ','
     limit = -1
     if kwargs.get('limit'):

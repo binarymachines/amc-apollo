@@ -106,10 +106,11 @@ def main(args):
         datafile = args.get('<datafile>')        
         xformer = build_transformer(transform_config_file, transform_map)
 
-        rec_source = dmap.RecordSource(dmap.csv_file_record_generator,
+        rec_source = dmap.RecordSource(dmap.csvfile_record_generator,
                                        filename=datafile,
                                        delimiter='\t',
                                        limit=limit)
+
         for input_record in rec_source.records():     
             output_record = xformer.transform(input_record)
             print(json.dumps(output_record))
